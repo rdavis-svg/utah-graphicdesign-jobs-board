@@ -175,39 +175,50 @@ async function fetchAdzunaJobs(mode = 'strict') {
     throw new Error('ADZUNA_APP_ID and ADZUNA_APP_KEY are required.');
   }
 
-  const pages = Array.from({ length: SEARCH_PAGE_COUNT }, (_, index) => index + 1);
-  const responses = [];
-  for (const page of pages) {
-    const url = new URL(`https://api.adzuna.com/v1/api/jobs/us/search/${page}`);
-    url.searchParams.set('app_id', appId);
-    url.searchParams.set('app_key', appKey);
-    url.searchParams.set(
-      'what',
-      isBroadMode
-        ? `${TARGET_ROLE_TERMS.join(' OR ')} OR design OR designer OR illustrator OR creative`
-        : TARGET_ROLE_TERMS.join(' OR ')
-    );
-    url.searchParams.set('where', 'Utah');
-    url.searchParams.set('results_per_page', '50');
-    url.searchParams.set('max_days_old', String(isBroadMode ? 60 : SEARCH_MAX_DAYS_OLD));
-    url.searchParams.set('content-type', 'application/json');
-    const response = await fetch(url);
-    if (!response.ok) {
-      const retryAfter = response.headers.get('retry-after');
-      const error = new Error(`Adzuna request failed with ${response.status} ${response.statusText}`);
-      error.status = response.status;
-      error.retryAfter = retryAfter;
-      throw error;
+  const strictKeywords = [
+    'graphic designer',
+    'motion designer',
+    'production artist',
+    'layout artist',
+    'digital illustrator',
+    'marketing designer'
+  ];
+  const broadKeywords = ['designer', 'graphic', 'creative'];
+  const keywords = isBroadMode ? broadKeywords : strictKeywords;
+
+  const payloads = [];
+  for (const keyword of keywords) {
+    const pages = [1];
+    for (const page of pages) {
+      const url = new URL(`https://api.adzuna.com/v1/api/jobs/us/search/${page}`);
+      url.searchParams.set('app_id', appId);
+      url.searchParams.set('app_key', appKey);
+      url.searchParams.set('what', keyword);
+      url.searchParams.set('where', 'Utah');
+      url.searchParams.set('results_per_page', '50');
+      url.searchParams.set('max_days_old', String(isBroadMode ? 90 : SEARCH_MAX_DAYS_OLD));
+      url.searchParams.set('content-type', 'application/json');
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        const retryAfter = response.headers.get('retry-after');
+        const error = new Error(`Adzuna request failed with ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        error.retryAfter = retryAfter;
+        throw error;
+      }
+
+      payloads.push(await response.json());
     }
-    responses.push(response);
   }
 
-  const payloads = await Promise.all(responses.map((r) => r.json()));
   const seen = new Set();
   const jobs = [];
+  let rawCount = 0;
 
   for (const payload of payloads) {
     for (const result of payload.results || []) {
+      rawCount += 1;
       if (seen.has(result.id)) continue;
       seen.add(result.id);
 
@@ -236,7 +247,13 @@ async function fetchAdzunaJobs(mode = 'strict') {
   });
   return {
     jobs,
-    matchMode: mode
+    matchMode: mode,
+    diagnostics: {
+      keywords,
+      rawCount,
+      uniqueCount: seen.size,
+      filteredCount: jobs.length
+    }
   };
 }
 
@@ -263,7 +280,8 @@ async function getJobs(mode = 'strict') {
       jobs: result.jobs,
       fetchedAt: modeCache.fetchedAt,
       source: 'live',
-      matchMode: result.matchMode
+      matchMode: result.matchMode,
+      diagnostics: result.diagnostics
     };
   } catch (error) {
     if (modeCache.jobs.length > 0) {
@@ -271,7 +289,11 @@ async function getJobs(mode = 'strict') {
         jobs: modeCache.jobs,
         fetchedAt: modeCache.fetchedAt,
         source: 'stale-cache',
-        matchMode: selectedMode
+        matchMode: selectedMode,
+        diagnostics: {
+          cache: true,
+          filteredCount: modeCache.jobs.length
+        }
       };
     }
     throw error;
@@ -284,13 +306,14 @@ function routeRequest(req, res) {
   if (req.method === 'GET' && url.pathname === '/api/jobs') {
     const mode = url.searchParams.get('mode') === 'broad' ? 'broad' : 'strict';
     getJobs(mode)
-      .then(({ jobs, fetchedAt, source, matchMode }) => {
+      .then(({ jobs, fetchedAt, source, matchMode, diagnostics }) => {
         toJSON(res, 200, {
           jobs,
           count: jobs.length,
           fetchedAt,
           source,
           matchMode,
+          diagnostics,
           filters: {
             title: mode === 'broad' ? 'broadened design/creative terms' : TARGET_ROLE_TERMS.join(' | '),
             location: 'Utah',
