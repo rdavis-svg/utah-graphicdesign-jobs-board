@@ -50,15 +50,15 @@ const TARGET_ROLE_TERMS = [
 
 const ROLE_MATCH_PATTERN =
   /graphic designer|junior graphic designer|motion designer|production artist|production designer|layout artist|digital illustrator|marketing designer|multimedia designer|visual artist|prepress|marketing coordinator|content designer|graphic design|brand designer|visual designer|creative designer/i;
+const BROAD_MATCH_PATTERN = /design|designer|illustrat|creative|marketing|production|brand|layout|motion|multimedia|prepress/i;
 
 const SEARCH_PAGE_COUNT = Number(process.env.SEARCH_PAGE_COUNT || '3');
 const SEARCH_MAX_DAYS_OLD = Number(process.env.SEARCH_MAX_DAYS_OLD || '30');
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
-const cache = {
-  jobs: [],
-  fetchedAt: null,
-  expiresAt: 0
+const cacheByMode = {
+  strict: { jobs: [], fetchedAt: null, expiresAt: 0 },
+  broad: { jobs: [], fetchedAt: null, expiresAt: 0 }
 };
 
 function parseEnvFile(raw) {
@@ -166,9 +166,10 @@ function formatSalary(min, max) {
   return dollars.format(min || max);
 }
 
-async function fetchAdzunaJobs() {
+async function fetchAdzunaJobs(mode = 'strict') {
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
+  const isBroadMode = mode === 'broad';
 
   if (!appId || !appKey) {
     throw new Error('ADZUNA_APP_ID and ADZUNA_APP_KEY are required.');
@@ -180,10 +181,15 @@ async function fetchAdzunaJobs() {
     const url = new URL(`https://api.adzuna.com/v1/api/jobs/us/search/${page}`);
     url.searchParams.set('app_id', appId);
     url.searchParams.set('app_key', appKey);
-    url.searchParams.set('what', TARGET_ROLE_TERMS.join(' OR '));
+    url.searchParams.set(
+      'what',
+      isBroadMode
+        ? `${TARGET_ROLE_TERMS.join(' OR ')} OR design OR designer OR illustrator OR creative`
+        : TARGET_ROLE_TERMS.join(' OR ')
+    );
     url.searchParams.set('where', 'Utah');
     url.searchParams.set('results_per_page', '50');
-    url.searchParams.set('max_days_old', String(SEARCH_MAX_DAYS_OLD));
+    url.searchParams.set('max_days_old', String(isBroadMode ? 60 : SEARCH_MAX_DAYS_OLD));
     url.searchParams.set('content-type', 'application/json');
     const response = await fetch(url);
     if (!response.ok) {
@@ -208,7 +214,8 @@ async function fetchAdzunaJobs() {
       const description = result.description || '';
       const title = result.title || '';
       const searchableText = `${title} ${description}`;
-      if (!ROLE_MATCH_PATTERN.test(searchableText)) continue;
+      const matches = isBroadMode ? BROAD_MATCH_PATTERN.test(searchableText) : ROLE_MATCH_PATTERN.test(searchableText);
+      if (!matches) continue;
 
       const degreeSignal = classifyDegreeRequirement(description);
       jobs.push(normalizeJob(result, degreeSignal));
@@ -229,39 +236,42 @@ async function fetchAdzunaJobs() {
   });
   return {
     jobs,
-    matchMode: 'strict'
+    matchMode: mode
   };
 }
 
-async function getJobs() {
+async function getJobs(mode = 'strict') {
+  const selectedMode = mode === 'broad' ? 'broad' : 'strict';
+  const modeCache = cacheByMode[selectedMode];
   const now = Date.now();
-  if (cache.expiresAt > now && cache.jobs.length > 0) {
+  if (modeCache.expiresAt > now && modeCache.jobs.length > 0) {
     return {
-      jobs: cache.jobs,
-      fetchedAt: cache.fetchedAt,
-      source: 'cache'
+      jobs: modeCache.jobs,
+      fetchedAt: modeCache.fetchedAt,
+      source: 'cache',
+      matchMode: selectedMode
     };
   }
 
   try {
-    const result = await fetchAdzunaJobs();
-    cache.jobs = result.jobs;
-    cache.fetchedAt = new Date().toISOString();
-    cache.expiresAt = now + CACHE_TTL_MS;
+    const result = await fetchAdzunaJobs(selectedMode);
+    modeCache.jobs = result.jobs;
+    modeCache.fetchedAt = new Date().toISOString();
+    modeCache.expiresAt = now + CACHE_TTL_MS;
 
     return {
       jobs: result.jobs,
-      fetchedAt: cache.fetchedAt,
+      fetchedAt: modeCache.fetchedAt,
       source: 'live',
       matchMode: result.matchMode
     };
   } catch (error) {
-    if (cache.jobs.length > 0) {
+    if (modeCache.jobs.length > 0) {
       return {
-        jobs: cache.jobs,
-        fetchedAt: cache.fetchedAt,
+        jobs: modeCache.jobs,
+        fetchedAt: modeCache.fetchedAt,
         source: 'stale-cache',
-        matchMode: 'cached'
+        matchMode: selectedMode
       };
     }
     throw error;
@@ -272,7 +282,8 @@ function routeRequest(req, res) {
   const url = new URL(req.url || '/', 'http://localhost');
 
   if (req.method === 'GET' && url.pathname === '/api/jobs') {
-    getJobs()
+    const mode = url.searchParams.get('mode') === 'broad' ? 'broad' : 'strict';
+    getJobs(mode)
       .then(({ jobs, fetchedAt, source, matchMode }) => {
         toJSON(res, 200, {
           jobs,
@@ -281,7 +292,7 @@ function routeRequest(req, res) {
           source,
           matchMode,
           filters: {
-            title: TARGET_ROLE_TERMS.join(' | '),
+            title: mode === 'broad' ? 'broadened design/creative terms' : TARGET_ROLE_TERMS.join(' | '),
             location: 'Utah',
             nonDegree: 'soft (shows more results, labels degree requirements)'
           }

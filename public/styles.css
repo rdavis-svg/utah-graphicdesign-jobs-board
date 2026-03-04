@@ -73,6 +73,23 @@ h1 {
   flex-wrap: wrap;
 }
 
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.mode-switch select {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  color: var(--ink);
+  font: inherit;
+}
+
 button {
   border: none;
   border-radius: 999px;

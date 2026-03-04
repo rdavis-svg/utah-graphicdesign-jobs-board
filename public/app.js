@@ -2,6 +2,7 @@ const jobsList = document.getElementById('jobs');
 const countEl = document.getElementById('job-count');
 const updatedEl = document.getElementById('last-updated');
 const refreshBtn = document.getElementById('refresh-button');
+const modeSelect = document.getElementById('search-mode');
 const jobTemplate = document.getElementById('job-template');
 
 function formatDate(dateValue) {
@@ -28,12 +29,14 @@ function formatDateTime(dateValue) {
 function modeLabel(mode) {
   const labels = {
     strict: 'Exact roles',
-    'strict-fallback': 'Exact roles (city fallback)',
-    relaxed: 'Related design roles',
-    'relaxed-fallback': 'Broadened fallback',
+    broad: 'Broadened search',
     cached: 'Cached results'
   };
   return labels[mode] || 'Search results';
+}
+
+function selectedMode() {
+  return modeSelect?.value === 'broad' ? 'broad' : 'strict';
 }
 
 function summarize(text, max = 240) {
@@ -86,9 +89,10 @@ function renderJobs(jobs) {
 
 async function loadJobs() {
   countEl.textContent = 'Refreshing jobs...';
+  const mode = selectedMode();
 
   try {
-    const response = await fetch(`/api/jobs?ts=${Date.now()}`);
+    const response = await fetch(`/api/jobs?mode=${encodeURIComponent(mode)}&ts=${Date.now()}`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -106,6 +110,10 @@ async function loadJobs() {
 }
 
 refreshBtn.addEventListener('click', () => {
+  loadJobs();
+});
+
+modeSelect?.addEventListener('change', () => {
   loadJobs();
 });
 
