@@ -199,6 +199,28 @@ async function fetchAdzunaJobs() {
     return Promise.all(responses.map((r) => r.json()));
   }
 
+  function collectJobsFromPayloads(payloads, seen, strictJobs, relaxedJobs) {
+    for (const payload of payloads) {
+      for (const result of payload.results || []) {
+        if (seen.has(result.id)) continue;
+        seen.add(result.id);
+
+        const description = result.description || '';
+        const title = result.title || '';
+        const searchableText = `${title} ${description}`;
+        const strictMatch = ROLE_MATCH_PATTERN.test(searchableText);
+        const relaxedMatch = RELAXED_ROLE_MATCH_PATTERN.test(searchableText);
+        const degreeSignal = classifyDegreeRequirement(description);
+
+        if (strictMatch) {
+          strictJobs.push(normalizeJob(result, degreeSignal));
+        } else if (relaxedMatch) {
+          relaxedJobs.push(normalizeJob(result, degreeSignal));
+        }
+      }
+    }
+  }
+
   const primaryPages = Array.from({ length: SEARCH_PAGE_COUNT }, (_, index) => index + 1);
   let payloads = await fetchPayloads({
     what: TARGET_ROLE_TERMS.join(' OR '),
@@ -212,54 +234,39 @@ async function fetchAdzunaJobs() {
   const strictJobs = [];
   const relaxedJobs = [];
 
-  for (const payload of payloads) {
-    for (const result of payload.results || []) {
-      if (seen.has(result.id)) continue;
-      seen.add(result.id);
-
-      const description = result.description || '';
-      const title = result.title || '';
-      const searchableText = `${title} ${description}`;
-      const strictMatch = ROLE_MATCH_PATTERN.test(searchableText);
-      const relaxedMatch = RELAXED_ROLE_MATCH_PATTERN.test(searchableText);
-      const degreeSignal = classifyDegreeRequirement(description);
-
-      if (strictMatch) {
-        strictJobs.push(normalizeJob(result, degreeSignal));
-      } else if (relaxedMatch) {
-        relaxedJobs.push(normalizeJob(result, degreeSignal));
-      }
-    }
-  }
+  collectJobsFromPayloads(payloads, seen, strictJobs, relaxedJobs);
 
   let jobs = strictJobs.length > 0 ? strictJobs : relaxedJobs;
   let matchMode = strictJobs.length > 0 ? 'strict' : 'relaxed';
 
   if (jobs.length === 0) {
     // Broader fallback so users see something when exact-role queries are too narrow.
-    payloads = await fetchPayloads({
-      what: 'design OR designer OR creative OR illustrator OR production OR marketing OR remote',
-      where: 'Utah',
-      maxDaysOld: 90,
-      pages: [1, 2]
-    });
+    const fallbackQueries = [
+      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Utah' },
+      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Salt Lake City' },
+      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Provo' },
+      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Ogden' },
+      { what: 'remote designer OR remote graphic designer OR remote illustrator', where: 'Utah' }
+    ];
 
-    for (const payload of payloads) {
-      for (const result of payload.results || []) {
-        if (seen.has(result.id)) continue;
-        seen.add(result.id);
-        const description = result.description || '';
-        const title = result.title || '';
-        const searchableText = `${title} ${description}`;
-        if (!RELAXED_ROLE_MATCH_PATTERN.test(searchableText)) continue;
-        const degreeSignal = classifyDegreeRequirement(description);
-        relaxedJobs.push(normalizeJob(result, degreeSignal));
+    for (const fallback of fallbackQueries) {
+      payloads = await fetchPayloads({
+        what: fallback.what,
+        where: fallback.where,
+        maxDaysOld: 120,
+        pages: [1]
+      });
+
+      collectJobsFromPayloads(payloads, seen, strictJobs, relaxedJobs);
+
+      if (strictJobs.length > 0 || relaxedJobs.length > 0) {
+        break;
       }
     }
 
-    jobs = relaxedJobs;
-    matchMode = jobs.length > 0 ? 'relaxed-fallback' : 'empty';
-    strategy = 'broad-utah-and-remote';
+    jobs = strictJobs.length > 0 ? strictJobs : relaxedJobs;
+    matchMode = strictJobs.length > 0 ? 'strict-fallback' : jobs.length > 0 ? 'relaxed-fallback' : 'empty';
+    strategy = jobs.length > 0 ? 'broad-utah-city-fallback' : 'broad-utah-city-fallback-empty';
   }
 
   if (jobs.length === 0) {

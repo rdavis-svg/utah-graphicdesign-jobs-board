@@ -28,6 +28,7 @@ function formatDateTime(dateValue) {
 function modeLabel(mode) {
   const labels = {
     strict: 'Exact roles',
+    'strict-fallback': 'Exact roles (city fallback)',
     relaxed: 'Related design roles',
     'relaxed-fallback': 'Broadened fallback',
     cached: 'Cached results'
