@@ -50,10 +50,9 @@ const TARGET_ROLE_TERMS = [
 
 const ROLE_MATCH_PATTERN =
   /graphic designer|junior graphic designer|motion designer|production artist|production designer|layout artist|digital illustrator|marketing designer|multimedia designer|visual artist|prepress|marketing coordinator|content designer|graphic design|brand designer|visual designer|creative designer/i;
-const RELAXED_ROLE_MATCH_PATTERN = /design|designer|illustrat|creative|marketing|production|brand|layout|motion|multimedia|prepress/i;
 
 const SEARCH_PAGE_COUNT = Number(process.env.SEARCH_PAGE_COUNT || '3');
-const SEARCH_MAX_DAYS_OLD = Number(process.env.SEARCH_MAX_DAYS_OLD || '60');
+const SEARCH_MAX_DAYS_OLD = Number(process.env.SEARCH_MAX_DAYS_OLD || '30');
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 const cache = {
@@ -175,106 +174,45 @@ async function fetchAdzunaJobs() {
     throw new Error('ADZUNA_APP_ID and ADZUNA_APP_KEY are required.');
   }
 
-  async function fetchPayloads({ what, where, maxDaysOld, pages }) {
-    const responses = [];
-    for (const page of pages) {
-      const url = new URL(`https://api.adzuna.com/v1/api/jobs/us/search/${page}`);
-      url.searchParams.set('app_id', appId);
-      url.searchParams.set('app_key', appKey);
-      url.searchParams.set('what', what);
-      url.searchParams.set('where', where);
-      url.searchParams.set('results_per_page', '50');
-      url.searchParams.set('max_days_old', String(maxDaysOld));
-      url.searchParams.set('content-type', 'application/json');
-      const response = await fetch(url);
-      if (!response.ok) {
-        const retryAfter = response.headers.get('retry-after');
-        const error = new Error(`Adzuna request failed with ${response.status} ${response.statusText}`);
-        error.status = response.status;
-        error.retryAfter = retryAfter;
-        throw error;
-      }
-      responses.push(response);
+  const pages = Array.from({ length: SEARCH_PAGE_COUNT }, (_, index) => index + 1);
+  const responses = [];
+  for (const page of pages) {
+    const url = new URL(`https://api.adzuna.com/v1/api/jobs/us/search/${page}`);
+    url.searchParams.set('app_id', appId);
+    url.searchParams.set('app_key', appKey);
+    url.searchParams.set('what', TARGET_ROLE_TERMS.join(' OR '));
+    url.searchParams.set('where', 'Utah');
+    url.searchParams.set('results_per_page', '50');
+    url.searchParams.set('max_days_old', String(SEARCH_MAX_DAYS_OLD));
+    url.searchParams.set('content-type', 'application/json');
+    const response = await fetch(url);
+    if (!response.ok) {
+      const retryAfter = response.headers.get('retry-after');
+      const error = new Error(`Adzuna request failed with ${response.status} ${response.statusText}`);
+      error.status = response.status;
+      error.retryAfter = retryAfter;
+      throw error;
     }
-    return Promise.all(responses.map((r) => r.json()));
+    responses.push(response);
   }
 
-  function collectJobsFromPayloads(payloads, seen, strictJobs, relaxedJobs) {
-    for (const payload of payloads) {
-      for (const result of payload.results || []) {
-        if (seen.has(result.id)) continue;
-        seen.add(result.id);
-
-        const description = result.description || '';
-        const title = result.title || '';
-        const searchableText = `${title} ${description}`;
-        const strictMatch = ROLE_MATCH_PATTERN.test(searchableText);
-        const relaxedMatch = RELAXED_ROLE_MATCH_PATTERN.test(searchableText);
-        const degreeSignal = classifyDegreeRequirement(description);
-
-        if (strictMatch) {
-          strictJobs.push(normalizeJob(result, degreeSignal));
-        } else if (relaxedMatch) {
-          relaxedJobs.push(normalizeJob(result, degreeSignal));
-        }
-      }
-    }
-  }
-
-  const primaryPages = Array.from({ length: SEARCH_PAGE_COUNT }, (_, index) => index + 1);
-  let payloads = await fetchPayloads({
-    what: TARGET_ROLE_TERMS.join(' OR '),
-    where: 'Utah',
-    maxDaysOld: SEARCH_MAX_DAYS_OLD,
-    pages: primaryPages
-  });
-
-  let strategy = 'strict-utah';
+  const payloads = await Promise.all(responses.map((r) => r.json()));
   const seen = new Set();
-  const strictJobs = [];
-  const relaxedJobs = [];
+  const jobs = [];
 
-  collectJobsFromPayloads(payloads, seen, strictJobs, relaxedJobs);
+  for (const payload of payloads) {
+    for (const result of payload.results || []) {
+      if (seen.has(result.id)) continue;
+      seen.add(result.id);
 
-  let jobs = strictJobs.length > 0 ? strictJobs : relaxedJobs;
-  let matchMode = strictJobs.length > 0 ? 'strict' : 'relaxed';
+      const description = result.description || '';
+      const title = result.title || '';
+      const searchableText = `${title} ${description}`;
+      if (!ROLE_MATCH_PATTERN.test(searchableText)) continue;
 
-  if (jobs.length === 0) {
-    // Broader fallback so users see something when exact-role queries are too narrow.
-    const fallbackQueries = [
-      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Utah' },
-      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Salt Lake City' },
-      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Provo' },
-      { what: 'design OR designer OR creative OR illustrator OR production OR marketing', where: 'Ogden' },
-      { what: 'remote designer OR remote graphic designer OR remote illustrator', where: 'Utah' }
-    ];
-
-    for (const fallback of fallbackQueries) {
-      payloads = await fetchPayloads({
-        what: fallback.what,
-        where: fallback.where,
-        maxDaysOld: 120,
-        pages: [1]
-      });
-
-      collectJobsFromPayloads(payloads, seen, strictJobs, relaxedJobs);
-
-      if (strictJobs.length > 0 || relaxedJobs.length > 0) {
-        break;
-      }
+      const degreeSignal = classifyDegreeRequirement(description);
+      jobs.push(normalizeJob(result, degreeSignal));
     }
-
-    jobs = strictJobs.length > 0 ? strictJobs : relaxedJobs;
-    matchMode = strictJobs.length > 0 ? 'strict-fallback' : jobs.length > 0 ? 'relaxed-fallback' : 'empty';
-    strategy = jobs.length > 0 ? 'broad-utah-city-fallback' : 'broad-utah-city-fallback-empty';
-  }
-
-  if (jobs.length === 0) {
-    return {
-      jobs: [],
-      matchMode,
-      strategy
-    };
   }
 
   const rank = {
@@ -291,8 +229,7 @@ async function fetchAdzunaJobs() {
   });
   return {
     jobs,
-    matchMode,
-    strategy
+    matchMode: 'strict'
   };
 }
 
@@ -316,8 +253,7 @@ async function getJobs() {
       jobs: result.jobs,
       fetchedAt: cache.fetchedAt,
       source: 'live',
-      matchMode: result.matchMode,
-      strategy: result.strategy
+      matchMode: result.matchMode
     };
   } catch (error) {
     if (cache.jobs.length > 0) {
@@ -325,8 +261,7 @@ async function getJobs() {
         jobs: cache.jobs,
         fetchedAt: cache.fetchedAt,
         source: 'stale-cache',
-        matchMode: 'cached',
-        strategy: 'cached'
+        matchMode: 'cached'
       };
     }
     throw error;
@@ -338,14 +273,13 @@ function routeRequest(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/api/jobs') {
     getJobs()
-      .then(({ jobs, fetchedAt, source, matchMode, strategy }) => {
+      .then(({ jobs, fetchedAt, source, matchMode }) => {
         toJSON(res, 200, {
           jobs,
           count: jobs.length,
           fetchedAt,
           source,
           matchMode,
-          strategy,
           filters: {
             title: TARGET_ROLE_TERMS.join(' | '),
             location: 'Utah',
