@@ -51,6 +51,7 @@ const TARGET_ROLE_TERMS = [
 const ROLE_MATCH_PATTERN =
   /graphic designer|junior graphic designer|motion designer|production artist|production designer|layout artist|digital illustrator|marketing designer|multimedia designer|visual artist|prepress|marketing coordinator|content designer|graphic design|brand designer|visual designer|creative designer/i;
 const BROAD_MATCH_PATTERN = /design|designer|illustrat|creative|marketing|production|brand|layout|motion|multimedia|prepress/i;
+const EXCLUDED_SENIOR_TITLE_PATTERN = /\b(senior|sr\.?)\b/i;
 
 const SEARCH_PAGE_COUNT = Number(process.env.SEARCH_PAGE_COUNT || '3');
 const SEARCH_MAX_DAYS_OLD = Number(process.env.SEARCH_MAX_DAYS_OLD || '30');
@@ -225,6 +226,7 @@ async function fetchAdzunaJobs(mode = 'strict') {
       const description = result.description || '';
       const title = result.title || '';
       const searchableText = `${title} ${description}`;
+      if (EXCLUDED_SENIOR_TITLE_PATTERN.test(title)) continue;
       const matches = isBroadMode ? BROAD_MATCH_PATTERN.test(searchableText) : ROLE_MATCH_PATTERN.test(searchableText);
       if (!matches) continue;
 
