@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Utah Graphic Design Jobs (No Degree Required)</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">Live local board</p>
+        <h1>Utah Graphic Design Jobs</h1>
+        <p class="subtitle">Non-degree dependent listings, refreshed automatically.</p>
+        <div class="status-bar">
+          <span id="job-count">Loading jobs...</span>
+          <span id="last-updated">-</span>
+        </div>
+        <div class="actions">
+          <button id="refresh-button" type="button">Refresh now</button>
+          <p id="refresh-note">Auto refresh every 30 minutes</p>
+        </div>
+      </header>
+
+      <section>
+        <ul id="jobs" class="jobs" aria-live="polite"></ul>
+      </section>
+    </main>
+
+    <template id="job-template">
+      <li class="job-card">
+        <h2 class="title"></h2>
+        <p class="company"></p>
+        <p class="meta"></p>
+        <p class="degree"></p>
+        <p class="salary"></p>
+        <p class="description"></p>
+        <a class="apply-link" target="_blank" rel="noopener noreferrer">View listing</a>
+      </li>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

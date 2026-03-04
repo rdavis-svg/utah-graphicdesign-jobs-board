@@ -1,0 +1,174 @@
+:root {
+  --bg: #fffaf2;
+  --card: #ffffff;
+  --ink: #1b1b1b;
+  --muted: #5f5b52;
+  --brand: #0c7c59;
+  --brand-strong: #07573f;
+  --border: #e8dfcf;
+  --shadow: 0 12px 35px rgba(15, 40, 33, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 80% 0%, #ffe4b8 0%, transparent 35%),
+    radial-gradient(circle at 0% 100%, #dff8ec 0%, transparent 35%),
+    var(--bg);
+}
+
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 18px 72px;
+}
+
+.hero {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: var(--shadow);
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--brand);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 8px 0 8px;
+  line-height: 1.1;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+.status-bar {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.actions {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  background: var(--brand);
+  color: white;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--brand-strong);
+}
+
+#refresh-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.jobs {
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 14px;
+}
+
+.job-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  animation: rise 320ms ease both;
+}
+
+.title {
+  margin: 0;
+}
+
+.company,
+.meta,
+.degree,
+.salary,
+.description {
+  margin: 8px 0 0;
+}
+
+.company {
+  font-weight: 700;
+}
+
+.meta,
+.degree,
+.salary,
+.description {
+  color: var(--muted);
+}
+
+.description {
+  line-height: 1.45;
+}
+
+.apply-link {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--brand-strong);
+  font-weight: 700;
+}
+
+.error {
+  background: #ffe9e5;
+  border: 1px solid #f3c1b8;
+  color: #742a1d;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 20px;
+  }
+
+  h1 {
+    font-size: 1.7rem;
+  }
+}
