@@ -118,6 +118,30 @@ button:hover {
   gap: 14px;
 }
 
+.notice {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fffdf8;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.notice p + p {
+  margin-top: 8px;
+}
+
+.notice a {
+  color: var(--brand-strong);
+  font-weight: 700;
+}
+
 .job-card {
   background: var(--card);
   border: 1px solid var(--border);
